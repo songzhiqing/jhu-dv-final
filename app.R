@@ -18,7 +18,8 @@ game1$na = is.na(game1$Genre)
 game1 = game1[game1$na == "FALSE",]
 game1$Year_of_Release <- as.numeric(game1$Year_of_Release)
 attach(game1)
-
+min_critic_score <- min(game1$Critic_Score,na.rm = TRUE)
+max_critic_score <- max(game1$Critic_Score,na.rm = TRUE)
 
 all_genres <- game1 %>%
   distinct(Genre)%>%
@@ -102,11 +103,7 @@ ui <- dashboardPage(
       
       tabItem(tabName = "page3",
               fluidPage(
-                
-                ui <- fluidPage(
                   titlePanel("Compare Your Selection"),
-                  
-                  
                   fluidRow(column(4,
                                   selectInput(
                                     "genre1",
@@ -129,10 +126,10 @@ ui <- dashboardPage(
                            "game2",
                            "Select Game 2",
                            choices = ""
-                         ),
+                         )
                   ),
                   column(4,
-                         radioButtons("standard",
+                         radioButtons("measure",
                                       h3("Compare by Sales or Scores"), 
                                       choices = list("Sales" = "Sales", "Scores" = "Scores")
                          )
@@ -146,20 +143,14 @@ ui <- dashboardPage(
                   br(),
                   br(),
                   fluidRow(column(12,
-                                  strong(textOutput("sales")),
+                                  strong(textOutput("comparison")),
                                   br(),
-                                  plotOutput("CompareChart1")
-                  ),
-                  column(12,
-                         strong(textOutput("scores")),
-                         br(),
-                         plotOutput("CompareChart2")
+                                  plotOutput("CompareChart")
                   )
-                  )
-                )
-                
+              )
               )
       ),
+      
       tabItem(tabName = "page4",
               h4("1. By Platform: Top 10 Sales"),
               br(),
@@ -229,32 +220,33 @@ ui <- dashboardPage(
       ),
       tabItem(tabName = "page5",
               fluidPage(
-                
-                ui <- fluidPage(
-                  h4("Build your own list"),
-                  sidebarLayout(
-                    sidebarPanel(width = 2,
-                                 selectInput(inputId = "I_Platform",
-                                             label = "Platform Selection",
-                                             choices = c("All", unique(as.character(Platform))),
-                                             selected = "All"
-                                 ),
-                                 selectInput(inputId = "I_Genre",
-                                             label = "Genre Selection",
-                                             choices = c("All", unique(as.character(Genre))),
-                                             selected = "All"
-                                 ),
-                                 selectInput(inputId = "I_Rating",
-                                             label = "Rating Selection",
-                                             choices = c("All", unique(as.character(Rating))),
-                                             selected = "All"
-                                 ),
-                                 br(), 
-                                 
-                                 actionButton('select', 'Select'),
-                    ),
-                    mainPanel(width = 8,
-                              dataTableOutput(outputId = "Table1"))
+                h4("Build your own list"),
+                sidebarLayout(
+                  sidebarPanel(width = 2,
+                               selectInput(inputId = "I_Platform",
+                                           label = "Platform Selection",
+                                           choices = c("All", unique(as.character(Platform))),
+                                           selected = "All"
+                               ),
+                               selectInput(inputId = "I_Genre",
+                                           label = "Genre Selection",
+                                           choices = c("All", unique(as.character(Genre))),
+                                           selected = "All"
+                               ),
+                               selectInput(inputId = "I_Rating",
+                                           label = "Rating Selection",
+                                           choices = c("All", unique(as.character(Rating))),
+                                           selected = "All"
+                               ),
+                               sliderInput(
+                                 inputId = "I_Critic_Score",
+                                 label = "Critic Score", min = min_critic_score, max = max_critic_score,
+                                 sep = "",
+                                 value = c(13, 98)
+                               ),
+                  ),      
+                  mainPanel(width = 8,
+                            dataTableOutput(outputId = "Table1"))
                     
                   )
                 )
@@ -262,7 +254,9 @@ ui <- dashboardPage(
       )
     )
   )
-)
+
+
+
 
 # Define server logic required to draw a histogram
 server <- function(input, output, session) {
@@ -426,95 +420,88 @@ game = reactive({
     pivot_longer(c(11,13), names_to = "Type", values_to = "Score")
   
   ShowChart1 = eventReactive(
-    c(input$CompareButton,input$standard), {
-      if(input$standard=="Sales"){
+    c(input$CompareButton,input$measure), 
+    {
+      if(input$measure=="Sales"){
         game1_sale <- games_sale %>%
           filter(Name == (input$game1))
         game2_sale <- games_sale %>%
           filter(Name == (input$game2))
         sales_selected <- rbind(game1_sale, game2_sale)
-        ggplot(sales_selected, aes(x= Name, y = Sales, fill = Region)) +
+        
+        saleschart <- 
+          ggplot(sales_selected, aes(x= Name, y = Sales, fill = Region)) +
+          geom_bar(stat = "identity", width = 0.3) +
           scale_fill_manual(values=c("#FFECB3",
                                      "#FFDB6D",
                                      "#EDAE49",
                                      "#D16103")) +
-          geom_bar(stat = "identity", width = 0.3) +
           theme_light()
+        return(saleschart)
       }
-    }
-  )
-  
-  ShowChart2 = eventReactive(
-    c(input$CompareButton, input$standard), {
-      if(input$standard=="Scores"){ 
+      if(input$measure=="Scores"){ 
         game1_score <- games_score %>%
           filter(Name == (input$game1))
         game2_score <- games_score %>%
           filter(Name == (input$game2))
         scores_selected <- rbind(game1_score, game2_score)
         
-        ggplot(scores_selected, aes(x= Name, y = Score, fill = Type)) +
+        scorechart <- 
+          ggplot(scores_selected, aes(x= Name, y = Score, fill = Type)) +
           geom_bar(stat = "identity", position="dodge", width = 0.3) +
           scale_fill_manual(values=c("#C3D7A4",
                                      "#52854C")) +
           theme_light()
+        return(scorechart)
       }
+      
+    })
+  
+  
+  ShowText = eventReactive(
+    c(input$CompareButton,input$measure), 
+    {text = paste0(input$measure,
+                   " Comparison"
+    )
     }
   )
   
-  output$sales =  renderText({
-    return("Sales Comparison")
+  
+  output$comparison =  renderText({
+    return(ShowText())
   })
   
-  output$CompareChart1 =  renderPlot({
+  output$CompareChart =  renderPlot({
     
     return(ShowChart1())
-  }
-  )
-  output$scores =  renderText({
-    return("Scores Comparison")
-  })
-  
-  output$CompareChart2 =  renderPlot({
-    return(ShowChart2())
   }
   )
   
   
   #part5-1
-  filtered_platform <- reactive({
-    if(input$I_Platform == "All"){
-      game1
-    } else {
-      game1 %>%
+  output$Table1 <- renderDataTable({
+    data = game1 
+    if(input$I_Platform != "All"){
+      data =  data %>%
         filter(Platform == input$I_Platform)
     }
-  })
-  #-2
-  filtered_genre <- reactive({
-    if(input$I_Genre == "All"){
-      filtered_platform()
-    } else {
-      filtered_platform() %>% 
+    
+    if(input$I_Genre != "All"){
+      data = data %>% 
         filter(Genre == input$I_Genre)
     }
-  })
-  #-3  
-  filtered_rating <- reactive({
-    if(input$I_Rating == "All"){
-      filtered_genre()
-    } else {
-      filtered_genre() %>% 
+    
+    if(input$I_Rating != "All"){
+      data = data %>% 
         filter(Rating == input$I_Rating)
     }
-  })
-  
-  fully_filtered <- eventReactive(input$select, {
-    filtered_rating()
-  })
-  
-  output$Table1 <- renderDataTable({
-    datatable(data = fully_filtered(), options = list(pageLength = 10),
+    data = data %>%
+      filter(!is.na(Critic_Score)) %>%
+      filter(Critic_Score>=input$I_Critic_Score[1] & Critic_Score<=input$I_Critic_Score[2]) %>%
+      select(Name:Rating)
+    
+    
+    datatable(data = data, options = list(pageLength = 10),
               rownames = FALSE, class = 'display', escape = FALSE)
     
   })
